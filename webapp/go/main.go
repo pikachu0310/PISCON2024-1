@@ -322,7 +322,6 @@ func postInitialize(c echo.Context) error {
 	cmd.Stdout = os.Stderr
 	err = cmd.Run()
 	if err != nil {
-		c.Logger().Errorf("exec init.sh error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -332,7 +331,6 @@ func postInitialize(c echo.Context) error {
 		request.JIAServiceURL,
 	)
 	if err != nil {
-		c.Logger().Errorf("db error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -357,14 +355,12 @@ func postAuthentication(c echo.Context) error {
 		case *jwt.ValidationError:
 			return c.String(http.StatusForbidden, "forbidden")
 		default:
-			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		c.Logger().Errorf("invalid JWT payload")
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	jiaUserIDVar, ok := claims["jia_user_id"]
@@ -378,20 +374,17 @@ func postAuthentication(c echo.Context) error {
 
 	_, err = db.Exec("INSERT IGNORE INTO user (`jia_user_id`) VALUES (?)", jiaUserID)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	session, err := getSession(c.Request())
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	session.Values["jia_user_id"] = jiaUserID
 	err = session.Save(c.Request(), c.Response())
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -407,20 +400,17 @@ func postSignout(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	session, err := getSession(c.Request())
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	session.Options = &sessions.Options{MaxAge: -1, Path: "/"}
 	err = session.Save(c.Request(), c.Response())
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -436,7 +426,6 @@ func getMe(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -453,7 +442,6 @@ func getIsuList(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -463,7 +451,6 @@ func getIsuList(c echo.Context) error {
 		"SELECT * FROM `isu` WHERE `jia_user_id` = ? ORDER BY `id` DESC",
 		jiaUserID)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -477,7 +464,6 @@ func getIsuList(c echo.Context) error {
 			if errors.Is(err, sql.ErrNoRows) {
 				foundLastCondition = false
 			} else {
-				c.Logger().Errorf("db error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 		}
@@ -486,7 +472,6 @@ func getIsuList(c echo.Context) error {
 		if foundLastCondition {
 			conditionLevel, err := calculateConditionLevel(lastCondition.Condition)
 			if err != nil {
-				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 
@@ -522,7 +507,6 @@ func postIsu(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -543,27 +527,23 @@ func postIsu(c echo.Context) error {
 	if useDefaultImage {
 		image, err = ioutil.ReadFile(defaultIconFilePath)
 		if err != nil {
-			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
 	} else {
 		file, err := fh.Open()
 		if err != nil {
-			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
 		defer file.Close()
 
 		image, err = ioutil.ReadAll(file)
 		if err != nil {
-			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
 	}
 
 	tx, err := db.Beginx()
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	defer tx.Rollback()
@@ -578,7 +558,6 @@ func postIsu(c echo.Context) error {
 			return c.String(http.StatusConflict, "duplicated: isu")
 		}
 
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -586,45 +565,38 @@ func postIsu(c echo.Context) error {
 	body := JIAServiceRequest{postIsuConditionTargetBaseURL, jiaIsuUUID}
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	reqJIA, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewBuffer(bodyJSON))
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	reqJIA.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(reqJIA)
 	if err != nil {
-		c.Logger().Errorf("failed to request to JIAService: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	defer res.Body.Close()
 
 	resBody, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	if res.StatusCode != http.StatusAccepted {
-		c.Logger().Errorf("JIAService returned error: status code %v, message: %v", res.StatusCode, string(resBody))
 		return c.String(res.StatusCode, "JIAService returned error")
 	}
 
 	var isuFromJIA IsuFromJIA
 	err = json.Unmarshal(resBody, &isuFromJIA)
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	_, err = tx.Exec("UPDATE `isu` SET `character` = ? WHERE  `jia_isu_uuid` = ?", isuFromJIA.Character, jiaIsuUUID)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -634,13 +606,11 @@ func postIsu(c echo.Context) error {
 		"SELECT * FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 		jiaUserID, jiaIsuUUID)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -656,7 +626,6 @@ func getIsuID(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -670,7 +639,6 @@ func getIsuID(c echo.Context) error {
 			return c.String(http.StatusNotFound, "not found: isu")
 		}
 
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -686,7 +654,6 @@ func getIsuIcon(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -700,7 +667,6 @@ func getIsuIcon(c echo.Context) error {
 			return c.String(http.StatusNotFound, "not found: isu")
 		}
 
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -716,7 +682,6 @@ func getIsuGraph(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -735,7 +700,6 @@ func getIsuGraph(c echo.Context) error {
 	err = db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 		jiaUserID, jiaIsuUUID)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	if count == 0 {
@@ -744,7 +708,6 @@ func getIsuGraph(c echo.Context) error {
 
 	res, err := generateIsuGraphResponse(db, jiaIsuUUID, date)
 	if err != nil {
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -924,7 +887,6 @@ func getIsuConditions(c echo.Context) error {
 			return c.String(http.StatusUnauthorized, "you are not signed in")
 		}
 
-		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -967,13 +929,11 @@ func getIsuConditions(c echo.Context) error {
 			return c.String(http.StatusNotFound, "not found: isu")
 		}
 
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	conditionsResponse, err := getIsuConditionsFromDB(db, jiaIsuUUID, endTime, conditionLevel, startTime, conditionLimit, isuName)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	return c.JSON(http.StatusOK, conditionsResponse)
@@ -1059,7 +1019,6 @@ func getTrend(c echo.Context) error {
 	characterList := []Isu{}
 	err := db.Select(&characterList, "SELECT `character` FROM `isu` GROUP BY `character`")
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
@@ -1072,7 +1031,6 @@ func getTrend(c echo.Context) error {
 			character.Character,
 		)
 		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
 
@@ -1086,7 +1044,6 @@ func getTrend(c echo.Context) error {
 				isu.JIAIsuUUID,
 			)
 			if err != nil {
-				c.Logger().Errorf("db error: %v", err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 
@@ -1094,7 +1051,6 @@ func getTrend(c echo.Context) error {
 				isuLastCondition := conditions[0]
 				conditionLevel, err := calculateConditionLevel(isuLastCondition.Condition)
 				if err != nil {
-					c.Logger().Error(err)
 					return c.NoContent(http.StatusInternalServerError)
 				}
 				trendCondition := TrendCondition{
@@ -1140,7 +1096,6 @@ func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
 	dropProbability := 0.9
 	if rand.Float64() <= dropProbability {
-		c.Logger().Warnf("drop post isu condition request")
 		return c.NoContent(http.StatusAccepted)
 	}
 
@@ -1160,7 +1115,6 @@ func postIsuCondition(c echo.Context) error {
 	var count int
 	err = db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	if count == 0 {
@@ -1187,7 +1141,6 @@ func postIsuCondition(c echo.Context) error {
 
 	_, err = db.Exec(query, values...)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
