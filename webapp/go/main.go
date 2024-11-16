@@ -213,10 +213,9 @@ func main() {
 	}()
 
 	e := echo.New()
-	e.Debug = true
-	e.Logger.SetLevel(log.DEBUG)
+	e.Debug = false
+	e.Logger.SetLevel(log.ERROR)
 
-	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	e.POST("/initialize", postInitialize)
@@ -300,9 +299,6 @@ func getJIAServiceURL(tx *sqlx.Tx) string {
 	var config Config
 	err := tx.Get(&config, "SELECT * FROM `isu_association_config` WHERE `name` = ?", "jia_service_url")
 	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			log.Print(err)
-		}
 		return defaultJIAServiceURL
 	}
 	return config.URL
